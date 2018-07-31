@@ -1,46 +1,124 @@
-The comma.ai Driver Monitoring Challenge!
+Solution writeup to the comma.ai Driver Monitoring Challenge
 ======
 
-We have released 4 one minute long videos of people driving cars in the videos/ folder.
+##### Input
 
-<img src="https://github.com/commaai/monitoring/blob/master/ss.png">
+* 4x 60s 20hz video
 
-They were recorded with an <a href="https://shop.comma.ai/products/eon-dashcam-devkit">EON Dashcan DevKit</a>
+##### Ouput
 
-Background
------
+* Annotated face tracking video
+* Head pose feature vector
 
-We believe driver monitoring is one of the keys to safely ramping up to full self driving cars.
+## Dependencies
 
-We wrote <a href="https://medium.com/@comma_ai/safety-and-driver-attention-2a33d3d23109">a lot more on our medium</a>
+* numpy
+* sklearn
+* skimage
+* cv2
+
+## Layout
+
+1. Core
+    * Frame preprocessing
+    * Facial detection
+    * Facial landmark
+    * Geometric orientation
+    * Rendering
+    * Main
+
+1. Support
+    * SVM preprocessing and training
+    * SVM data
+
+1. Data
+    * Trained SVM
+    * Input
+        1. Video files
+    * Output
+        1. Annotated video
+        1. Head pose estimation feature vectors
+    * Intermediate files
+    * Haar cascade classifier
+
+## Method
+
+video -> video preprocess + dataset preprocess -> train svm -> face detection -> retrain svm -> face detection -> find landmarks -> calculate geometry -> render
+
+## Pipeline
+
+read frame -> frame preprocess -> face detection -> find landmarks -> calculate geometry -> render
 
 
-Challenge
------
+## SVM Preprocessing
 
-Your goal:
-- Track their face
-- Then, track their eyes
-- Then, if you are bored, track their emotional state
+1. HEVC video dataset -> frames
+1. Yale faces dataset -> cropped
 
-Annotate your tracking nicely on the video and do a writeup with pictures.
+## SVM Training
 
-Hiring
------
+1. Cropped yale faces -> positive samples
+1. 256 object categories dataset -> negative samples
+1. Annotate samples
+1. Train linear SVM
+1. Save SVM model
+1. (After sliding window): Retain SVM  with hard-negative mining
+1. Save new SVM model
 
-Feel free to fork this and just show off your solution on your GitHub. Or, when done, apply for a job here at givemeajob@comma.ai
+## Face Detection
 
-We are hiring a full time "Driving Monitoring Engineer" to come join us in our lovely SF office, and when you apply, we'll ask that you complete this challenge.
+1. Sliding window over image pyramid
+1. Non-maximum suppression
 
-Other Challenge
------
+## Face Alignment and Head Pose
 
-If you are looking for a harder non-subjective challenge, try the <a href="https://twitter.com/comma_ai/status/854488327797448704">speed prediction challenge</a>
+1. Facial landmark alignment
+1. 2D-3D point mapping
+1. Compute head orientation
 
-Goal is to predict the speed of the car from video. Train and test set included.
+## Render Tracking and Pose
 
-Twitter
-------
+1. 
+1. 
 
-<a href="https://twitter.com/comma_ai">Follow us!</a>
+## Future:
 
+1. Pupil detection
+    * CDF
+    * Feature Extraction and Normalization
+1. Gaze Classification and Decision Pruning
+
+
+
+
+
+Method:
+
+Using comma ai dataset:
+Take in hevc video
+Extract frames from 60s of 20hz video (~1200)
+
+Using yale faces dataset:
+Convert to jpg and grayscale
+Crop the images using builtin haar cascades
+uniform resize
+write to disk
+generate (~165) positive samples for SVM using skimage hog descriptor
+
+Using 256_object_categories dataset:
+generate (~30600) negative samples for SVM using skimage hog in batches of 1000 saving to disk
+
+arrange data correctly + add labels
+train svm with the positive and negative samples
+save trained svm
+
+sliding window
+image pyramid
+non-maximum suppression
+hard negative mining
+retrain
+
+find face
+find eyes
+geometric transformation for facial plane
+generate vector
