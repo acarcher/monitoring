@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import cv2
-import os
+from os import path, listdir, makedirs
 import myutils
 import imghdr
 import glob
@@ -9,22 +9,24 @@ from skimage.feature import hog
 import numpy as np
 from sklearn.svm import SVC
 from sklearn.externals import joblib
-from myutils import npmerge
+
+FRAME_OUT = "../data/intermediate/extractFrames/"
 
 
-def extractframes(inDir, outDir):
-    """Takes in a video directory and destination directory,
-    outputs the frames of the video to the destination in jpg format"""
+class Preprocess():
 
-    os.makedirs(outDir, exist_ok=True)
+    def extractFrames(self, filepath):
 
-    paths = [os.path.join(inDir, filename) for filename in os.listdir(inDir)]
+        """Takes in a video directory and destination directory,
+        outputs the frames of the video to the destination in jpg format"""
 
-    print("Extracting frames...")
+        outDirectory, filename = self.createOutputDirectory(filepath)
 
-    for path in paths:
-        _, tail = os.path.split(path)
-        fileName = os.path.splitext(tail)[0]
+        print("Extracting frames for {}" % filename)
+
+        #for entry in paths:
+        #    _, tail = path.split(entry)
+        #    fileName = path.splitext(tail)[0]
 
         currentFrame = 0
         cap = cv2.VideoCapture(path)
@@ -33,10 +35,11 @@ def extractframes(inDir, outDir):
         while success:
 
             success, frame = cap.read()
+
             if not success:
                 break
 
-            name = outDir + "/" + fileName + "_" + str(currentFrame) + ".jpg"
+            name = FRAME_OUT + filename + "/" + filename + "_" + str(currentFrame) + ".jpg"
 
             cv2.imwrite(name, frame)
 
@@ -44,156 +47,256 @@ def extractframes(inDir, outDir):
 
         cap.release()
         cv2.destroyAllWindows()
-    print("Done!")
 
+        print("Done extracting frames for {}" % filename)
 
-def isolatefaces(inDir, outDir):
-    """Uses a Haar Cascade to isolate faces, saves into new image, will convert to jpg if necessary"""
-    face_cascade = cv2.CascadeClassifier('data/haarcascade_frontalface_default.xml')
+    def convertVideos(self, directory):
 
-    print("Isolating faces...")
+        paths = [path.join(directory, filename) for filename in listdir(directory)]
 
-    if imghdr.what(os.path.join(inDir, os.listdir(inDir)[0])) is not ".jpg":
-        myutils.cvt2JPG(inDir, inDir + "_jpg")
-        inDir = inDir + "_jpg"
+        for entry in paths:
+            self.extractFrames(entry)
 
-    os.makedirs(outDir, exist_ok=True)
+    def createOutputDirectory(filepath):
+        _, filename = path.split(filepath)
+        outDirectory = FRAME_OUT + filename + "/"
+        makedirs(outDirectory, exist_ok=True)
 
-    #paths = [os.path.join(inDir, filename) for filename in os.listdir(inDir)]
-    paths = glob.glob(inDir + "/**/*.jpg", recursive=True)
+        return outDirectory, filename
 
-    images = []
-    filenames = []
-    maxsize = 0
+    def isolatefaces(inDir, outDir):
+        """Uses a Haar Cascade to isolate faces, saves into new image, will convert to jpg if necessary"""
+        face_cascade = cv2.CascadeClassifier('data/haarcascade_frontalface_default.xml')
 
-    for path in paths:
+        print("Isolating faces...")
 
-        _, filename = os.path.split(path)
-        filetype = imghdr.what(path)
+        if imghdr.what(os.path.join(inDir, os.listdir(inDir)[0])) is not ".jpg":
+            myutils.cvt2JPG(inDir, inDir + "_jpg")
+            inDir = inDir + "_jpg"
 
-        if filetype is "gif":
-            success, img = cv2.VideoCapture(path).read()
-            if not success:
-                print("Error: VideoCapture for gif image failed")
-                exit(-1)
-        else:
-            img = cv2.imread(path)
+        os.makedirs(outDir, exist_ok=True)
 
-        if len(img.shape) == 3:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        #paths = [os.path.join(inDir, filename) for filename in os.listdir(inDir)]
+        paths = glob.glob(inDir + "/**/*.jpg", recursive=True)
 
-        faces = face_cascade.detectMultiScale(img, 1.2, 5)
+        images = []
+        filenames = []
+        maxsize = 0
 
-        for (x, y, xoffset, yoffset) in faces:
-            images.append(img[y:y + yoffset, x:x + xoffset])
-            filenames.append(filename)
+        for path in paths:
 
-    for image in images:
-        if image.shape[0] > maxsize:        # assumes square
-            maxsize = image.shape[0]
+            _, filename = os.path.split(path)
+            filetype = imghdr.what(path)
 
-    for image, filename in zip(images, filenames):  # reshapes to max similar size
-        image = cv2.resize(image, (maxsize, maxsize), interpolation=cv2.INTER_CUBIC)
-        cv2.imwrite(outDir + "/" + filename, image)
-
-    print("Done isolating faces")
-
-def gensamples(inDir, outDir, exampletype, startpoint=0):
-    """Generates HOG descriptor examples from the files in inDir and saves the numpy output to outDir"""
-
-    """	HOG feature length, N, is based on the image size and the function parameter values.
-        N = prod([BlocksPerImage, BlockSize, NumBins])
-        BlocksPerImage = floor((size(I)./CellSize – BlockSize)./(BlockSize – BlockOverlap) + 1)"""
-
-    if exampletype != "positive" and exampletype != "negative":
-        print("Error: exampletype must be 'positive' or 'negative'")
-        exit(-1)
-
-    os.makedirs(outDir, exist_ok=True)
-
-    #paths = [os.path.join(inDir, filename) for filename in os.listdir(inDir)]
-    paths = glob.glob(inDir + "/**/*.jpg", recursive=True)
-
-    samples = np.empty([1000, 14400])  # need to fix when sub 1k samples
-
-    print("Generating {} samples...".format(exampletype))
-    index = 0
-    round = int(startpoint / 1000)
-    paths = paths[startpoint:]
-    print("paths len: {}".format(len(paths)))
-    print("round: {}".format(round))
-
-    for path in paths:
-
-        print("index: {}".format(index))
-        print("path: {}".format(path))
-
-        im = cv2.imread(path)
-        # very large images break things
-        if im.shape[0] >= 3000 or im.shape[1] >= 3000:
-            continue
-
-        cheightrem = im.shape[0] % 21
-        #cheightpad = math.ceil(cheightrem / (cheightrem + 1)) * 21 - cheightrem
-        cheightpad = 21 - cheightrem if cheightrem > 0 else 0
-
-        cwidthrem = im.shape[1] % 21
-        #cwidthpad = math.ceil(cwidthrem / (cwidthrem + 1)) * 21 - cwidthrem
-        cwidthpad = 21 - cwidthrem if cwidthrem > 0 else 0
-
-        im = cv2.copyMakeBorder(im, 0, cheightpad, 0, cwidthpad, cv2.BORDER_REPLICATE)
-
-        cheight = (im.shape[0] + cheightpad) // 21
-        cwidth = (im.shape[1] + cwidthpad) // 21
-
-        im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-
-        descriptor = hog(im, orientations=9, pixels_per_cell=(cwidth, cheight), cells_per_block=(2, 2), block_norm="L2")
-
-        samples[index, :] = np.array([descriptor])
-
-        # if we are on 1000th iteration OR we're at the length of paths ... LOGIC IS FLAWED WHEN SKIPPING ... usde round to sub .. 
-        # wow that's a terrible statement
-        if (index + 1) % 1000 == 0 or (index + 1) % (len(paths) - (round - int(startpoint / 1000)) * 1000) == 0:
-            round += 1
-
-            if (index + 1) % (len(paths) - (round - 1 - int(startpoint / 1000)) * 1000) == 0:
-                samples = np.resize(samples, (index + 1, 14400))
-                np.save(outDir + '/' + "{}_samples_".format(exampletype) + str(round), samples)
+            if filetype is "gif":
+                success, img = cv2.VideoCapture(path).read()
+                if not success:
+                    print("Error: VideoCapture for gif image failed")
+                    exit(-1)
             else:
-                np.save(outDir + '/' + "{}_samples_".format(exampletype) + str(round), samples)
+                img = cv2.imread(path)
 
-            print("Writing out {}/{}_samples_".format(outDir, exampletype) + str(round))
-            index = 0
-        else:
-            index += 1
-            print("post index: {}".format(index))
+            if len(img.shape) == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    print("Done generating {} samples".format(exampletype))
+            faces = face_cascade.detectMultiScale(img, 1.2, 5)
+
+            for (x, y, xoffset, yoffset) in faces:
+                images.append(img[y:y + yoffset, x:x + xoffset])
+                filenames.append(filename)
+
+        for image in images:
+            if image.shape[0] > maxsize:        # assumes square
+                maxsize = image.shape[0]
+
+        for image, filename in zip(images, filenames):  # reshapes to max similar size
+            image = cv2.resize(image, (maxsize, maxsize), interpolation=cv2.INTER_CUBIC)
+            cv2.imwrite(outDir + "/" + filename, image)
+
+        print("Done isolating faces")
 
 
-def trainsvm(positive, negative, n_positive, n_negative):
-    # positive is 
-    # n_positive/negative is number of samples
+class SVM():
 
-    # number per entry in directory
-    # create a single feature vector from positive and negative samples
-    # generate a vector of class labels
-    # train model
-    # save model
+    def gensamples(inDir, outDir, exampletype, startpoint=0):
+        """Generates HOG descriptor examples from the files in inDir and saves the numpy output to outDir"""
 
-    print("Training SVM...")
+        """	HOG feature length, N, is based on the image size and the function parameter values.
+            N = prod([BlocksPerImage, BlockSize, NumBins])
+            BlocksPerImage = floor((size(I)./CellSize – BlockSize)./(BlockSize – BlockOverlap) + 1)"""
 
-    selected_positive = positive[list(range(0, n_positive)), :]
-    selected_negative = negative[list(range(0, n_negative)), :]
+        if exampletype != "positive" and exampletype != "negative":
+            print("Error: exampletype must be 'positive' or 'negative'")
+            exit(-1)
 
-    X = np.vstack((selected_positive, selected_negative))
+        os.makedirs(outDir, exist_ok=True)
 
-    y = ["face"] * n_positive + ["no face"] * n_negative
+        #paths = [os.path.join(inDir, filename) for filename in os.listdir(inDir)]
+        paths = glob.glob(inDir + "/**/*.jpg", recursive=True)
 
-    clf = SVC()
-    clf.fit(X, y)
+        samples = np.empty([1000, 14400])  # need to fix when sub 1k samples
 
-    joblib.dump(clf, 'classifier.pkl')
+        print("Generating {} samples...".format(exampletype))
+        index = 0
+        round = int(startpoint / 1000)
+        paths = paths[startpoint:]
+        print("paths len: {}".format(len(paths)))
+        print("round: {}".format(round))
 
-    print("Done training SVM")
+        for path in paths:
+
+            print("index: {}".format(index))
+            print("path: {}".format(path))
+
+            im = cv2.imread(path)
+            # very large images break things
+            if im.shape[0] >= 3000 or im.shape[1] >= 3000:
+                continue
+
+            cheightrem = im.shape[0] % 21
+            #cheightpad = math.ceil(cheightrem / (cheightrem + 1)) * 21 - cheightrem
+            cheightpad = 21 - cheightrem if cheightrem > 0 else 0
+
+            cwidthrem = im.shape[1] % 21
+            #cwidthpad = math.ceil(cwidthrem / (cwidthrem + 1)) * 21 - cwidthrem
+            cwidthpad = 21 - cwidthrem if cwidthrem > 0 else 0
+
+            im = cv2.copyMakeBorder(im, 0, cheightpad, 0, cwidthpad, cv2.BORDER_REPLICATE)
+
+            cheight = (im.shape[0] + cheightpad) // 21
+            cwidth = (im.shape[1] + cwidthpad) // 21
+
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+
+            descriptor = hog(im, orientations=9, pixels_per_cell=(cwidth, cheight), cells_per_block=(2, 2), block_norm="L2")
+
+            samples[index, :] = np.array([descriptor])
+
+            # if we are on 1000th iteration OR we're at the length of paths ... LOGIC IS FLAWED WHEN SKIPPING ... usde round to sub .. 
+            # wow that's a terrible statement
+            if (index + 1) % 1000 == 0 or (index + 1) % (len(paths) - (round - int(startpoint / 1000)) * 1000) == 0:
+                round += 1
+
+                if (index + 1) % (len(paths) - (round - 1 - int(startpoint / 1000)) * 1000) == 0:
+                    samples = np.resize(samples, (index + 1, 14400))
+                    np.save(outDir + '/' + "{}_samples_".format(exampletype) + str(round), samples)
+                else:
+                    np.save(outDir + '/' + "{}_samples_".format(exampletype) + str(round), samples)
+
+                print("Writing out {}/{}_samples_".format(outDir, exampletype) + str(round))
+                index = 0
+            else:
+                index += 1
+                print("post index: {}".format(index))
+
+        print("Done generating {} samples".format(exampletype))
+
+    def trainsvm(positive, negative, n_positive, n_negative):
+        # positive is 
+        # n_positive/negative is number of samples
+
+        # number per entry in directory
+        # create a single feature vector from positive and negative samples
+        # generate a vector of class labels
+        # train model
+        # save model
+
+        print("Training SVM...")
+
+        selected_positive = positive[list(range(0, n_positive)), :]
+        selected_negative = negative[list(range(0, n_negative)), :]
+
+        X = np.vstack((selected_positive, selected_negative))
+
+        y = ["face"] * n_positive + ["no face"] * n_negative
+
+        clf = SVC()
+        clf.fit(X, y)
+
+        joblib.dump(clf, 'classifier.pkl')
+
+        print("Done training SVM")
+
+
+class Util():
+
+    def cvt2JPG(inDir, outDir):
+        # Convert input directory images to jpg in the output directory
+
+        cvtformats = [".bmp", ".dib", ".jpeg", ".jpg", ".jpe", ".jp2", ".png", ".webp",
+                    ".pbm", ".pgm", ".ppm", ".sr", ".ras", ".tiff", ".tif"]
+
+        paths = [os.path.join(inDir, filename) for filename in os.listdir(inDir)]
+
+        os.makedirs(outDir, exist_ok=True)
+
+        print("Converting to .jpg...")
+
+        for path in paths:
+            filetype = imghdr.what(path)
+            filename, fileext = os.path.splitext(os.path.split(path)[1])
+
+            replaceext = False
+
+            if fileext in cvtformats or fileext == ".gif":
+                replaceext = True
+
+            if filetype == "gif":
+                success, img = cv2.VideoCapture(path).read()
+
+                if not success:
+                    print("Error: VideoCapture for {} image failed".format(filetype))
+                    exit(-1)
+            else:
+                img = cv2.imread(path)
+
+            if replaceext:
+                cv2.imwrite(outDir + '/' + filename + ".jpg", img)
+            else:
+                cv2.imwrite(outDir + '/' + filename + fileext + ".jpg", img)
+
+        print("Done converting to .jpg")
+
+    def npmerge(directory, dimensions, sampletype, variety=False):
+        # positive = list of files with positive samples in them
+        # negative = ""
+
+        print("Merging together features...")
+        paths = glob.glob(directory + "/{}*.npy".format(sampletype))
+
+        merged = np.empty(dimensions)
+        max_rows = merged.shape[0]
+        index = 0
+
+        if variety:
+            variety_rows, extra_rows = divmod(merged.shape[0], len(paths))
+
+        for path in paths: # Need to handle the case where the feature vector is smaller than the specified number of samples
+
+            partial_sample = np.load(path)
+
+            if variety and variety_rows <= partial_sample.shape[0]:
+                num_rows = variety_rows
+            else:
+                num_rows = partial_sample.shape[0]
+
+            if index + num_rows > max_rows:
+                num_rows = max_rows - index - 1
+
+            merged[list(range(index, index + num_rows)), :] = partial_sample[list(range(0, num_rows)), :]
+            index = index + num_rows if index != 0 else index + num_rows - 1
+
+            #print(index)
+            #print(dimensions[0])
+
+            if variety and paths.index(path) + 1 == len(paths) and \
+                num_rows + extra_rows < partial_sample.shape[0]: # last item, time to correct juicy rounding errors
+
+                merged[list(range(index, index + extra_rows)), :] = \
+                    partial_sample[list(range(num_rows, num_rows + extra_rows)), :]
+
+            if (index + 1) % dimensions[0] == 0:
+                print("Done merging features")
+                return merged
+
+        return merged
