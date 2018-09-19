@@ -20,6 +20,7 @@ Solution writeup to the comma.ai Driver Monitoring Challenge
 ## Layout
 
 1. Core
+
     * Frame preprocessing
     * Facial detection
     * Facial landmark
@@ -28,18 +29,35 @@ Solution writeup to the comma.ai Driver Monitoring Challenge
     * Main
 
 1. Support
-    * SVM preprocessing and training
-    * SVM data
+
+    * Configuration
+    * SVM preprocessing
+    * SVM training
+    * File utilities
+    * Numpy utilities
+    * Image utilities
 
 1. Data
+
     * Trained SVM
     * Input
-        1. Video files
+        * Video files
+    * Intermediate
+        * Preprocessing (optional)
+        * imagesToFaces
+        * videosToFrames
     * Output
-        1. Annotated video
-        1. Head pose estimation feature vectors
-    * Intermediate files
+        * Annotated video
+        * Head pose estimation feature vectors
     * Haar cascade classifier
+
+1. Spike
+
+    * Random excursions
+
+1. Tests
+
+    * TBD
 
 ## Method
 
