@@ -1,3 +1,5 @@
 ss.png
 data/
 .vscode/
+bfg*
+__pycache__
