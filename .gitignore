@@ -3,3 +3,4 @@ data/
 .vscode/
 bfg*
 __pycache__
+__init__*
