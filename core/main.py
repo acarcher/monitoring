@@ -1,9 +1,10 @@
-#from myutils import npmerge
-#import preprocessing as pp
-#import numpy as np
-from monitoring.support.svm import Preprocess
+#!/usr/bin/python3
+
+from support.preprocessing import Preprocess
 
 VIDEO_IN = "../data/input/videos/"
+FACE_DATASET_DIRTY = ""
+FACE_DATASET_CLEAN = ""
 
 
 def run():
@@ -26,7 +27,11 @@ def run():
 
 
     #
-    #
+    # run tests
+    # 
     #
 
-    Preprocess.convertVideos(VIDEO_IN)
+    preprocessing = Preprocess()
+    preprocessing.videosToFrames(VIDEO_IN)
+    preprocessing.imagesToFaces(FACE_DATASET_DIRTY)
+

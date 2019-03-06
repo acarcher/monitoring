@@ -23,7 +23,7 @@ Solution writeup to the comma.ai Driver Monitoring Challenge
 
     * Frame preprocessing
     * Facial detection
-    * Facial landmark
+    * Facial landmark identification
     * Geometric orientation
     * Rendering
     * Main

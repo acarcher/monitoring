@@ -9,6 +9,8 @@ from .fileutil import fileutil
 from .config import CASCADE, V2F_CONFIG, I2F_CONFIG
 
 
+# TODO: TESTING/BAD INPUTS (make sure it just skips over fails)
+
 class Preprocess():
 
     def videosToFrames(self, directory, delete=True):
